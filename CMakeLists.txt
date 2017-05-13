@@ -167,7 +167,7 @@ add_executable(mcsema-dump-cfg
 # Copy mcsema-disass in
 add_custom_command(
     TARGET protobuf_python_module PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_PROTOBUFPYTHONMODULE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/mcsema_disass/ida)
+    COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_PROTOBUFPYTHONMODULE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/mcsema_disass/common)
 
 # this is needed for the #include directives with absolutes paths to work correctly; it must
 # also be set to PUBLIC since remill-lift includes some files directly

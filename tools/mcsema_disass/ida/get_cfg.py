@@ -26,6 +26,7 @@ import collections
 import itertools
 
 # Bring in utility libraries.
+from mcsema_disass.common.util import *
 from util import *
 from table import *
 from flow import *
@@ -42,8 +43,8 @@ if os.path.isdir('/usr/local/lib/python2.7/dist-packages'):
 tools_disass_ida_dir = os.path.dirname(__file__)
 tools_disass_dir = os.path.dirname(tools_disass_ida_dir)
 
-# Note: The bootstrap file will copy CFG_pb2.py into this dir!!
-import CFG_pb2
+# Note: The bootstrap file will copy CFG_pb2.py into the common dir!!
+from mcsema_disass.common import CFG_pb2
 
 EXTERNAL_FUNCS_TO_RECOVER = {}
 EXTERNAL_VARS_TO_RECOVER = {}

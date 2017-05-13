@@ -124,7 +124,9 @@ def main(args=None):
         # remove the zero-sized file
         os.unlink(args.output)
         ret = 1
-
+    elif 'r2' in args.disassembler:
+        import radare.disass
+        ret = radare.disass.execute(args, fixed_command_args)
     else:
       arg_parser.error("{} passed to --disassembler is not known.".format(
           args.disassembler))

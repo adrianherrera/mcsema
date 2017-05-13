@@ -20,8 +20,6 @@ import itertools
 import struct
 import inspect
 
-_DEBUG_FILE = None
-_DEBUG_PREFIX = ""
 _INFO = idaapi.get_inf_structure()
 
 if "ARM" in _INFO.procName:
@@ -29,29 +27,6 @@ if "ARM" in _INFO.procName:
 else:
   from x86_util import *
 
-def INIT_DEBUG_FILE(file):
-  global _DEBUG_FILE
-  _DEBUG_FILE = file
-
-def DEBUG_PUSH():
-  global _DEBUG_PREFIX
-  _DEBUG_PREFIX += "  "
-
-def DEBUG_POP():
-  global _DEBUG_PREFIX
-  _DEBUG_PREFIX = _DEBUG_PREFIX[:-2]
-
-def DEBUG(s):
-  global _DEBUG_FILE
-  if _DEBUG_FILE:
-    _DEBUG_FILE.write("{}{}\n".format(_DEBUG_PREFIX, str(s)))
-
-# Python 2.7's xrange doesn't work with `long`s.
-def xrange(begin, end=None, step=1):
-  if end:
-    return iter(itertools.count(begin, step).next, end)
-  else:
-    return iter(itertools.count().next, begin)
 
 _NOT_INST_EAS = set()
 
