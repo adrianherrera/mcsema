@@ -12,11 +12,90 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""
+This module contains utility functions specific to Radare.
+"""
 
-def r2_do_cmd_at_pos(r2, pos, cmd):
-    """Seek to a specific position so that we can perform a command there, then
+
+import r2pipe
+
+
+__all__ = ["r2_init",
+           "r2_get_section",
+           "r2_get_function",
+           "r2_do_cmd_at_pos",
+          ]
+
+
+def r2_init(path):
+    """Load the binary at `path` into Radare."""
+    r2 = r2pipe.open(path)
+    r2.cmd("aaa")
+
+    return r2
+
+
+_SECTION_MAP = dict()
+
+
+def r2_get_section(r2, sec_name, default=None):
+    """Cache the sections as a map for more efficient lookups by name."""
+    global _SECTION_MAP
+    if _SECTION_MAP:
+        return _SECTION_MAP.get(sec_name, default)
+
+    for sec in r2.cmdj("Sj"):
+        name = sec.pop("name")
+        _SECTION_MAP[name] = sec
+
+    return _SECTION_MAP.get(sec_name, default)
+
+
+_FUNCTION_MAP = dict()
+
+
+def r2_get_function(r2, func_name, check_externals=False, default=None):
+    """Get the start address of a function."""
+    global _FUNCTION_MAP
+
+    def get_func(func_name, check_externals=False, default=None):
+        """Retrieve a function from the `_FUNCTION_MAP`."""
+        func = _FUNCTION_MAP.get(func_name)
+        if func:
+            return func
+
+        # Check the symbol table
+        func = _FUNCTION_MAP.get("sym.{}".format(func_name))
+        if func:
+            return func
+
+        if not check_externals:
+            # If we are not checking external functions and we have reached
+            # this point, the function does not exist
+            return default
+
+        for prefix in ("sym.impl", "sub"):
+            # Now check if the function is external
+            func = _FUNCTION_MAP.get("{}.{}".format(prefix, func_name))
+            if func:
+                return func
+
+        return default
+
+    if _FUNCTION_MAP:
+        return get_func(func_name, check_externals, default)
+
+    for func in r2.cmdj("aflj"):
+        name = func.pop("name")
+        _FUNCTION_MAP[name] = func
+
+    return get_func(func_name, check_externals, default)
+
+
+def r2_do_cmd_at_pos(r2, addr, cmd):
+    """Seek to a specific address so that we can perform a command there, then
     return to our original position."""
-    _r2_seek(r2, pos)
+    _r2_seek(r2, addr)
     if cmd[-1] == "j":
         # Execute a command that produces JSON output
         res = r2.cmdj(cmd)
@@ -28,11 +107,11 @@ def r2_do_cmd_at_pos(r2, pos, cmd):
     return res
 
 
-def _r2_seek(r2, pos):
-    """Seek to a specific position and check that the seek was successful.
-    Throw an exception if it wasn't."""
-    actual_pos = int(r2.cmd("s {};s".format(pos)), 16)
-    if pos != 0x00 and actual_pos == 0x00:
-        raise Exception("Failed to see to {}".format(pos))
+def _r2_seek(r2, addr):
+    """Seek to a specific address and check that the seek was successful. Throw
+    an exception if it wasn't."""
+    new_addr = int(r2.cmd("s {:#x}; s".format(addr)), 16)
+    if addr != 0x00 and new_addr == 0x00:
+        raise Exception("Failed to see to {:#x}".format(addr))
 
-    return actual_pos
+    return new_addr

@@ -17,25 +17,7 @@
 from mcsema_disass.common.util import DEBUG, DEBUG_PUSH, DEBUG_POP
 from .r2_util import r2_do_cmd_at_pos
 
-
-# Note: Radare using the term "section", rather than segment
-
-
-_SECTION_MAP = dict()
-
-
-def section_map(r2):
-    """Cache the sections as a map for more efficient lookups by name."""
-    global _SECTION_MAP
-    if _SECTION_MAP:
-        return _SECTION_MAP
-
-    for sec in r2.cmdj("Sj"):
-        name = sec.pop("name")
-        _SECTION_MAP["name"] = sec
-
-    return _SECTION_MAP
-
+# Note: Radare uses the term "section", rather than segment
 
 def _decode_segment_instructions(r2, seg, binary_is_pie):
     """Tries to find all jump tables ahead of time. A side-effect of this is to
@@ -51,21 +33,21 @@ def process_segments(r2, binary_is_pie):
     # Start by going through all instructions. One result is that we should
     # find and identify jump tables, which we need to do so that we don't
     # incorrectly categorize some things as strings.
-    for seg in r2.cmdj("Sj"):
-        seg_addr = seg["vaddr"]
-        seg_flags = seg["flags"]
-        seg_name = seg["name"]
+    for sec in r2.cmdj("Sj"):
+        sec_addr = sec["vaddr"]
+        sec_flags = sec["flags"]
+        sec_name = sec["name"]
 
         # Radare has no notion of which sections are code. Therefore let's just
         # look for executable sections
-        if seg_flags[-1] == "x" and seg_flags[0] != "m":
-            DEBUG("Looking for instructions in segment {}".format(seg_name))
+        if sec_flags[-1] == "x" and sec_flags[0] != "m":
+            DEBUG("Looking for instructions in segment {}".format(sec_name))
             DEBUG_PUSH()
-            _decode_segment_instructions(r2, seg, binary_is_pie)
+            _decode_segment_instructions(r2, sec, binary_is_pie)
             DEBUG_POP()
 
     # Now go through the data segments and look for strings and missing
     # cross-references.
-    for seg in r2.cmdj("Sj"):
+    for sec in r2.cmdj("Sj"):
         # TODO finish this
-        pass
+        raise NotImplementedError()

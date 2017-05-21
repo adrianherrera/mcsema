@@ -15,6 +15,7 @@
 
 
 import argparse
+from collections import namedtuple
 import os
 import traceback
 
@@ -22,13 +23,21 @@ import traceback
 from mcsema_disass.common import CFG_pb2
 
 from mcsema_disass.common.util import *
-from . import r2_init
+from .r2_util import *
 from .segment import *
 from .util import *
 
 
-tools_disass_radare_dir = os.path.dirname(__file__)
-tools_disass_dir = os.path.dirname(tools_disass_radare_dir)
+tools_disass_dir = os.path.dirname(os.path.dirname(__file__))
+
+
+ExportInfo = namedtuple('ExportInfo', ['argc',  # Number of arguments
+                                       'conv',  # Calling convention
+                                       'ret',   # `True` if the function
+                                                # returns, or `False` otherwise
+                                       'sign',  # XXX ???
+                                      ])
+
 
 EXTERNAL_FUNCS_TO_RECOVER = {}
 EXTERNAL_VARS_TO_RECOVER = {}
@@ -83,9 +92,8 @@ def is_ELF_got_pointer(r2, addr):
     if ".got" not in sec_name:
         return False
 
-    name = get_symbol_name(r2, addr)
-    if not name.endswith("_ptr"): # XXX Is "_ptr" a thing in Radare?
-        return False
+    # TODO I don't think we can use the symbol name like we can in IDA
+    raise NotImplementedError()
 
     target_addr = get_reference_target(r2, addr)
     target_name = get_true_external_name(r2, get_symbol_name(r2, target_addr))
@@ -131,6 +139,68 @@ def get_true_external_name(r2, fn):
         return fn[1:]
 
     # TODO finish this
+    raise NotImplementedError()
+
+
+def parse_os_defs_file(r2, df):
+    """Parse the file containing external function and variable
+    specifications."""
+    global OS_NAME, WEAK_SYMS, EMAP, EMAP_DATA
+    global _FIXED_EXTERNAL_NAMES
+
+    is_linux = OS_NAME == "linux"
+
+    for line in df.readlines():
+        # Skip comments and empty lines
+        line = line.strip()
+        if not line or line[0] == "#":
+            continue
+
+        if line.startswith("DATA:"):
+            _, sym_name, dsize = line.split()
+            if "PTR" in dsize:
+                dsize = get_address_size_in_bytes(r2)
+            EMAP_DATA[sym_name] = int(dsize)
+
+            # Radare does not parse the GOT's contents, so we cannot look for
+            # pointers there
+        else:
+            fname = args = conv = ret = sign = None
+            line_args = line.split()
+            if len(line_args) == 2:
+                fname, conv = line_args
+                if conv == "MCSEMA":
+                    DEBUG("Found McSema internal function: {}".format(fname))
+                    real_conv = CFG_pb2.ExternalFunction.McsemaCall
+                    EMAP[fname] = ExportInfo(1, real_conv, False, None)
+                    continue
+                else:
+                    raise Exception("Unknown calling convention: {}".format(conv))
+
+            if len(line_args) == 4:
+                fname, args, conv, ret = line_args
+            elif len(line_args) == 5:
+                fname, args, conv, ret, sign = line_args
+
+            real_conv = dict(C=CFG_pb2.ExternalFunction.CallerCleanup,
+                             E=CFG_pb2.ExternalFunction.CalleeCleanup,
+                             F=CFG_pb2.ExternalFunction.FastCall).get(conv)
+            if real_conv is None:
+                raise Exception("Unknown calling convention: {}".format(conv))
+
+            real_ret = dict(Y=True, N=False).get(ret)
+            if real_ret is None:
+                raise Exception("Unknown return type: {}".format(ret))
+
+            addr = r2_get_function(r2, fname, default=dict()).get("offset")
+            if (addr is not None and not is_invalid_addr(addr) and
+                    not is_external_segment(addr) and not is_thunk(addr)):
+                DEBUG("Not treating {} as external, it is defined at {:#x}".format(fname, addr))
+                continue
+
+            EMAP[fname] = ExportInfo(int(args), real_conv, real_ret, sign)
+
+            # Radare does not parse the GOT, so there are no weak symbols
 
 
 # TODO A bunch of functions in here
@@ -165,10 +235,29 @@ def recover_function(r2, M, func_addr, new_func_addrs, entrypoints):
 
 def find_default_function_heads(r2):
     """Loop through every function, to discover the heads of all blocks that
-    IDA recognizes. This will populate some global sets in `flow.py` that
+    Radare recognizes. This will populate some global sets in `flow.py` that
     will help distinguish block heads."""
-    # TODO
-    pass
+    # Get the code (executable) sections
+    code_secs = set()
+    for sec in r2.cmdj("Sj"):
+        sec_flags = sec["flags"]
+
+        if sec_flags[-1] == "x":
+            start_addr = sec["vaddr"]
+            end_addr = start_addr + sec["vsize"]
+
+            code_secs.add((start_addr, end_addr))
+
+    # Check which function heads fall within a code section
+    # XXX Can we do this more efficiently?
+    func_heads = set()
+    for func in r2.cmdj("aflj"):
+        for sec_start, sec_end in code_secs:
+            func_addr = func["offset"]
+            if sec_start <= func_addr <= sec_end:
+                func_heads.add(func_addr)
+
+    return func_heads
 
 
 def recover_segment_variables(r2, M, S, seg_addr, seg_end_addr):
@@ -230,16 +319,21 @@ def identify_external_symbols(r2):
     pass
 
 
-def identify_progam_entrypoints(r2, func_addrs):
+def identify_program_entrypoints(r2, func_addrs):
     """Identify all entrypoints into the program. This is pretty much any
     externally visable function."""
-    symbols = r2.cmdj('isj')
-    entries = [symbol for symbol in symbols if symbol['type'] == 'FUNC']
+    symbols = r2.cmdj("isj")
+    entries = [symbol for symbol in symbols if symbol["type"] == "FUNC"]
     entrypoints = set()
 
     for entry in entries:
-        # TODO finish this
-        pass
+        name = entry["name"]
+        addr = entry["vaddr"]
+        if not is_internal_code(r2, addr) or is_external_reference(r2, addr):
+            DEBUG("Export {0} at {1:#x} does not point to code; skipping".format(name, addr))
+            continue
+        func_addrs.add(addr)
+        entrypoints.add(addr)
 
     return entrypoints
 
@@ -336,6 +430,9 @@ def get_cfg(binary, command_args, **args):
     EMAP = {}
     EMAP_DATA = {}
 
+    # Initialize Radare
+    r2 = r2_init(binary)
+
     # Try to find the defs file for this OS
     global OS_NAME
     OS_NAME = args["os"]
@@ -345,10 +442,10 @@ def get_cfg(binary, command_args, **args):
         args["std_defs"].insert(0, os_defs_file)
 
     # Load in all defs files, include custom ones.
-    for defsfile in args["std_defs"]:
-        with open(defsfile, "r") as df:
-            DEBUG("Loading Standard Definitions file: {0}".format(defsfile))
-            # TODO parse defs file
+    for defs_file in args["std_defs"]:
+        with open(defs_file, "r") as df:
+            DEBUG("Loading Standard Definitions file: {0}".format(defs_file))
+            parse_os_defs_file(r2, df)
 
     DEBUG("Starting analysis")
     try:
@@ -357,9 +454,6 @@ def get_cfg(binary, command_args, **args):
         if args.get("syms"):
             # TODO handle this
             pass
-
-        # Initialize Radare
-        r2 = r2_init(binary)
 
         # Recover the module as a protobuf
         M = recover_module(r2, args["entrypoint"])

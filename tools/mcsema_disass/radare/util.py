@@ -16,8 +16,7 @@
 
 import struct
 
-from .r2_util import r2_do_cmd_at_pos
-from .segment import section_map
+from .r2_util import r2_do_cmd_at_pos, r2_get_section
 
 
 _NOT_CODE_ADDRS = set()
@@ -29,9 +28,9 @@ def is_code(r2, addr):
     if addr in _NOT_CODE_ADDRS:
         return False
 
-    # Get the current section and get its flags
+    # Get the current section and its flags
     sec = r2_do_cmd_at_pos(r2, addr, "S.j")[0]
-    sec_flags = section_map(r2).get(sec["name"]).get("flags")
+    sec_flags = r2_get_section(r2, sec["name"]).get("flags")
 
     return sec_flags[-1] == "x"
 
@@ -48,7 +47,7 @@ def read_bytes(r2, start, end):
     # Radare equivalent of the `read_bytes_slowly` function
     length = start - end
 
-    asm_bytes = r2.cmdj("ej").get("asm.bits") / 8
+    asm_bytes = get_address_size_in_bytes(r2)
     offset = 0
     num_bytes_read = 0
     bytestr = ""
@@ -108,10 +107,37 @@ def is_external_segment(r2, addr):
         return True
 
     # TODO check for external definitions
-    pass
+    raise NotImplementedError()
 
     _NOT_EXTERNAL_SEGMENTS.add(base_addr)
     return False
+
+
+def is_internal_code(r2, addr):
+    if is_external_segment(r2, addr):
+        return False
+
+    if is_code(r2, addr):
+        return True
+
+    # Find stray 0x90 (NOP) bytes in .text that IDA thinks are data items
+    #
+    # XXX Not sure if this is an issue in Radare, but let's check anyway
+    if read_byte(r2, addr) == 0x90:
+        if not try_mark_as_code(r2, addr):
+            return False
+        return True
+
+    return False
+
+
+def get_address_size_in_bits(r2):
+    """Returns the available address size."""
+    return r2.cmdj("ej").get("asm.bits")
+
+
+def get_address_size_in_bytes(r2):
+    return get_address_size_in_bits(r2) / 8
 
 
 def get_symbol_name(r2, addr):
@@ -119,12 +145,9 @@ def get_symbol_name(r2, addr):
     func_info = r2.cmdj("afij {:#x}".format(addr))
 
     if func_info:
-        name = func_info["name"]
-
-        # Radare likes to prepend external functions with "sym.", so lets
-        # remove this
-        if name.startswith("sym."):
-            return name[4:]
+        # Radare applies varies prefixes to external functions/symols. Remove
+        # them
+        name = func_info["name"].split(".")[-1]
 
         return name
 
