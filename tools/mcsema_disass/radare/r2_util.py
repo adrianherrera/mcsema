@@ -41,9 +41,11 @@ _SECTION_MAP = dict()
 def r2_get_section(r2, sec_name, default=None):
     """Cache the sections as a map for more efficient lookups by name."""
     global _SECTION_MAP
+
     if _SECTION_MAP:
         return _SECTION_MAP.get(sec_name, default)
 
+    # Build the section map if it does not already exist
     for sec in r2.cmdj("Sj"):
         name = sec.pop("name")
         _SECTION_MAP[name] = sec
@@ -60,6 +62,7 @@ def r2_get_function(r2, func_name, check_externals=False, default=None):
 
     def get_func(func_name, check_externals=False, default=None):
         """Retrieve a function from the `_FUNCTION_MAP`."""
+        # Check for the function name directly
         func = _FUNCTION_MAP.get(func_name)
         if func:
             return func
@@ -85,6 +88,7 @@ def r2_get_function(r2, func_name, check_externals=False, default=None):
     if _FUNCTION_MAP:
         return get_func(func_name, check_externals, default)
 
+    # Build the function map if it does not already exist
     for func in r2.cmdj("aflj"):
         name = func.pop("name")
         _FUNCTION_MAP[name] = func

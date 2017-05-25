@@ -13,35 +13,8 @@
 # limitations under the License.
 
 from util import *
+from mcsema_disass.common.refs import Reference
 
-class Reference(object):
-  __slots__ = ('offset', 'ea', 'symbol', 'type')
-
-  INVALID = 0
-  IMMEDIATE = 1
-  DISPLACEMENT = 2
-  MEMORY = 3
-  CODE = 4
-
-  TYPE_TO_STR = {
-    INVALID: "(null)",
-    IMMEDIATE: "imm",
-    DISPLACEMENT: "disp",
-    MEMORY: "mem",
-    CODE: "code",
-  }
-
-  def __init__(self, ea, offset):
-    self.offset = offset
-    self.ea = ea
-    self.symbol = ""
-    self.type = self.INVALID
-
-  def __str__(self):
-    return "({} {} {})".format(
-      is_code(self.ea) and "code" or "data",
-      self.TYPE_TO_STR[self.type],
-      self.symbol or "0x{:x}".format(self.ea))
 
 # Try to determine if `ea` points at a field within a structure. This is a
 # heuristic for determining whether or not an immediate `ea` should actually
@@ -274,11 +247,15 @@ def get_instruction_references(arg, binary_is_pie=False):
     if inst.ea in _REFS:
       return _REFS[inst.ea]
 
+  DEBUG('get_instruction_references for 0x%x' % inst.ea)
+
   offset_to_ref = {}
   all_refs = get_all_references_from(inst.ea)
   for ea in xrange(inst.ea, inst.ea + inst.size):
+    DEBUG('Checking ea = 0x%x' % ea)
     targ_ea = idc.GetFixupTgtOff(ea)
     if not is_invalid_ea(targ_ea):
+      DEBUG('targ_ea = 0x%x' % targ_ea)
       all_refs.add(targ_ea)
       ref = Reference(targ_ea, ea - inst.ea)
       offset_to_ref[ref.offset] = ref
