@@ -100,7 +100,8 @@ def r2_do_cmd_at_pos(r2, addr, cmd):
     """Seek to a specific address so that we can perform a command there, then
     return to our original position."""
     _r2_seek(r2, addr)
-    if cmd[-1] == "j":
+
+    if cmd.split(" ")[0][-1] == "j":
         # Execute a command that produces JSON output
         res = r2.cmdj(cmd)
     else:

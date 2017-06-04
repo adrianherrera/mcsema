@@ -247,15 +247,11 @@ def get_instruction_references(arg, binary_is_pie=False):
     if inst.ea in _REFS:
       return _REFS[inst.ea]
 
-  DEBUG('get_instruction_references for 0x%x' % inst.ea)
-
   offset_to_ref = {}
   all_refs = get_all_references_from(inst.ea)
   for ea in xrange(inst.ea, inst.ea + inst.size):
-    DEBUG('Checking ea = 0x%x' % ea)
     targ_ea = idc.GetFixupTgtOff(ea)
     if not is_invalid_ea(targ_ea):
-      DEBUG('targ_ea = 0x%x' % targ_ea)
       all_refs.add(targ_ea)
       ref = Reference(targ_ea, ea - inst.ea)
       offset_to_ref[ref.offset] = ref

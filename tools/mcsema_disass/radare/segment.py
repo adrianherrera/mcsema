@@ -24,6 +24,7 @@ def decode_segment_instructions(r2, seg, binary_is_pie):
     """Tries to find all jump tables ahead of time. A side-effect of this is to
     create a decoded instruction and jump table cache. The other side-effect is
     that the decoding of jump tables will *remove* some cross-references."""
+
     code = r2_do_cmd_at_pos(r2, seg["vaddr"], "pDj %d" % seg["vsize"])
     for inst in code:
         get_instruction_references(r2, inst, binary_is_pie)
